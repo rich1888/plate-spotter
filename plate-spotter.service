@@ -13,9 +13,16 @@ Environment=PLATE_SPOTTER_CONFIG=/home/pi/plate-spotter/config.yaml
 Environment=PLATE_SPOTTER_API_TOKEN=tokenABCD12345
 ExecStart=/home/pi/plate-spotter/venv/bin/python -m src.main -c /home/pi/plate-spotter/config.yaml
 Restart=on-failure
-RestartSec=10
+RestartSec=30
+StartLimitIntervalSec=300
+StartLimitBurst=5
 StandardOutput=journal
 StandardError=journal
+
+# Resource limits — prevent starving SSH/system
+CPUQuota=75%
+MemoryMax=1G
+OOMPolicy=stop
 
 # Hardening
 NoNewPrivileges=true
