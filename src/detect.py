@@ -163,8 +163,9 @@ class PlateLocalizer:
         # Convert to greyscale once — both methods need it
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
 
-        # Collect candidates from both methods
+        # Collect candidates from all methods
         candidates = self._morph(gray, rw, rh, roi_area)
+        candidates += self._morph_inverted(gray, rw, rh, roi_area)
         candidates += self._edges(gray, rw, rh, roi_area)
 
         if not candidates:
@@ -243,6 +244,27 @@ class PlateLocalizer:
         )
 
         # Find external contours (outlines of white regions)
+        cnts, _ = cv2.findContours(cl, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        return self._filter(cnts, rw, rh, roi_area)
+
+    def _morph_inverted(self, gray, rw, rh, roi_area):
+        """Morphological tophat method for inverted plates.
+
+        Tophat = image - opening(image).  It highlights small light
+        regions on a darker background — white text on black plate
+        surrounds (common on dateless / show plates).
+        """
+        kern = cv2.getStructuringElement(cv2.MORPH_RECT, (13, 5))
+        th_img = cv2.morphologyEx(gray, cv2.MORPH_TOPHAT, kern)
+
+        _, th = cv2.threshold(th_img, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+
+        cl = cv2.morphologyEx(
+            th,
+            cv2.MORPH_CLOSE,
+            cv2.getStructuringElement(cv2.MORPH_RECT, (21, 5)),
+        )
+
         cnts, _ = cv2.findContours(cl, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         return self._filter(cnts, rw, rh, roi_area)
 

@@ -135,6 +135,14 @@ class PlateOCR:
             2,   # constant subtracted from mean
         )
 
+        # -- Step 5b: handle inverted plates (white text on dark background) --
+        # If the image is mostly white after thresholding, it's a normal plate.
+        # If mostly black, it's inverted — flip it so Tesseract sees dark text
+        # on a white background (which is what it expects).
+        white_ratio = np.count_nonzero(th) / th.size
+        if white_ratio < 0.3:
+            th = cv2.bitwise_not(th)
+
         # -- Step 6: white border --
         # Tesseract can misread characters that touch the image edge.
         # Adding 10 px of white padding on all sides fixes this.
