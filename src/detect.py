@@ -1,9 +1,10 @@
 """
-detect.py — Vehicle detection (YOLOv8n) + morphological plate localisation.
+detect.py — Vehicle detection (YOLOv8n via ONNX Runtime) + morphological
+plate localisation.
 
 Two-stage pipeline:
-  1. VehicleDetector  — runs YOLOv8-nano on the full frame to find cars,
-     trucks, buses, motorcycles.  Returns bounding boxes.
+  1. VehicleDetector  — runs YOLOv8-nano (ONNX) on the full frame to find
+     cars, trucks, buses, motorcycles.  Returns bounding boxes.
   2. PlateLocalizer   — runs *inside* each vehicle bounding box (ROI) using
      cheap OpenCV morphological operations (no second neural network).
      Returns the cropped plate image and its coordinates.
@@ -36,37 +37,166 @@ BBox = Tuple[int, int, int, int]
 # ═══════════════════════════════════════════════════════════════════════════
 
 class VehicleDetector:
-    """Detect vehicles in a frame using YOLOv8-nano (ultralytics).
+    """Detect vehicles in a frame using YOLOv8-nano (ONNX Runtime).
 
-    The model file (yolov8n.pt, ~6 MB) is auto-downloaded by ultralytics
-    on first run.  After that it's cached locally.
+    Requires a pre-exported ``yolov8n.onnx`` model file.  Export once on
+    the Pi with ultralytics installed::
+
+        python3 -c "from ultralytics import YOLO; YOLO('yolov8n.pt').export(format='onnx')"
 
     Args:
         config: Full app config dict — we read the "detection" section.
     """
 
+    # NMS IoU threshold for overlapping boxes
+    _NMS_IOU = 0.45
+
     def __init__(self, config: dict):
         cfg = config["detection"]
-        self.model_path: str = cfg["model_path"]   # e.g. "yolov8n.pt"
+        self.model_path: str = cfg["model_path"]   # e.g. "yolov8n.onnx"
         self.conf: float = cfg["confidence"]        # minimum confidence (0–1)
-        self.classes: list = cfg["vehicle_classes"]  # which COCO classes to keep
+        self.classes: set = set(cfg["vehicle_classes"])  # COCO IDs to keep
         self.imgsz: int = cfg["input_size"]          # inference resolution
-        self._model = None  # loaded lazily in load()
+        self._session = None  # loaded lazily in load()
 
     def load(self):
-        """Import ultralytics and load the YOLO model into memory.
+        """Load the ONNX model into an inference session.
 
         Also runs a single "warm-up" inference on a blank image so the
         first real frame isn't artificially slow.
         """
-        from ultralytics import YOLO
+        import onnxruntime as ort
 
-        self._model = YOLO(self.model_path)
+        self._session = ort.InferenceSession(
+            self.model_path,
+            providers=["CPUExecutionProvider"],
+        )
 
         # Warm-up: a dummy black image at the target resolution
         dummy = np.zeros((self.imgsz, self.imgsz, 3), dtype=np.uint8)
-        self._model(dummy, imgsz=self.imgsz, verbose=False)
-        logger.info("YOLO model loaded and warmed up: %s", self.model_path)
+        self._preprocess_and_infer(dummy)
+        logger.info("ONNX model loaded and warmed up: %s", self.model_path)
+
+    # ------------------------------------------------------------------ #
+    #  Preprocessing
+    # ------------------------------------------------------------------ #
+
+    def _preprocess(self, frame: np.ndarray) -> Tuple[np.ndarray, float, int, int]:
+        """Resize + normalise a BGR frame for YOLO input.
+
+        Uses letter-boxing (pad with grey) to maintain aspect ratio.
+
+        Returns:
+            (blob, ratio, pad_x, pad_y) — the NCHW float32 tensor,
+            the resize ratio, and the x/y padding offsets.
+        """
+        h, w = frame.shape[:2]
+        ratio = self.imgsz / max(h, w)
+        new_w, new_h = int(w * ratio), int(h * ratio)
+
+        resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+        # Pad to square (imgsz × imgsz), grey fill
+        pad_x = (self.imgsz - new_w) // 2
+        pad_y = (self.imgsz - new_h) // 2
+        padded = np.full((self.imgsz, self.imgsz, 3), 114, dtype=np.uint8)
+        padded[pad_y : pad_y + new_h, pad_x : pad_x + new_w] = resized
+
+        # HWC → CHW, BGR → RGB, 0-255 → 0-1, add batch dim
+        blob = padded[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) / 255.0
+        blob = blob[np.newaxis, ...]  # (1, 3, 640, 640)
+
+        return blob, ratio, pad_x, pad_y
+
+    # ------------------------------------------------------------------ #
+    #  Postprocessing
+    # ------------------------------------------------------------------ #
+
+    def _postprocess(
+        self, output: np.ndarray, ratio: float, pad_x: int, pad_y: int,
+        orig_h: int, orig_w: int,
+    ) -> List[Tuple[BBox, float]]:
+        """Parse raw YOLO output tensor and apply NMS.
+
+        Args:
+            output: shape (1, 84, 8400) — 4 box coords + 80 class scores
+                    per candidate.
+            ratio:  scale factor from preprocess.
+            pad_x, pad_y: letter-box padding offsets.
+            orig_h, orig_w: original frame dimensions.
+
+        Returns:
+            List of ((x1, y1, x2, y2), confidence) for vehicle detections.
+        """
+        # Transpose to (8400, 84) — one row per candidate
+        preds = output[0].T  # (8400, 84)
+
+        # Columns: cx, cy, w, h, then 80 class scores
+        cx = preds[:, 0]
+        cy = preds[:, 1]
+        bw = preds[:, 2]
+        bh = preds[:, 3]
+        class_scores = preds[:, 4:]  # (8400, 80)
+
+        # Best class per candidate
+        class_ids = np.argmax(class_scores, axis=1)
+        confidences = class_scores[np.arange(len(class_ids)), class_ids]
+
+        # Filter: confidence threshold AND vehicle class
+        mask = confidences >= self.conf
+        class_mask = np.isin(class_ids, list(self.classes))
+        keep = mask & class_mask
+
+        cx, cy, bw, bh = cx[keep], cy[keep], bw[keep], bh[keep]
+        confidences = confidences[keep]
+
+        if len(confidences) == 0:
+            return []
+
+        # Convert centre-wh to x1y1x2y2 (still in padded 640×640 space)
+        x1 = cx - bw / 2
+        y1 = cy - bh / 2
+        x2 = cx + bw / 2
+        y2 = cy + bh / 2
+
+        # Remove letter-box padding and rescale to original frame
+        x1 = (x1 - pad_x) / ratio
+        y1 = (y1 - pad_y) / ratio
+        x2 = (x2 - pad_x) / ratio
+        y2 = (y2 - pad_y) / ratio
+
+        # NMS via OpenCV
+        boxes_for_nms = np.stack([x1, y1, x2 - x1, y2 - y1], axis=1).tolist()
+        indices = cv2.dnn.NMSBoxes(
+            boxes_for_nms,
+            confidences.tolist(),
+            self.conf,
+            self._NMS_IOU,
+        )
+        if len(indices) == 0:
+            return []
+
+        out: List[Tuple[BBox, float]] = []
+        for idx in indices:
+            i = int(idx)
+            bx1 = max(0, int(x1[i]))
+            by1 = max(0, int(y1[i]))
+            bx2 = min(orig_w, int(x2[i]))
+            by2 = min(orig_h, int(y2[i]))
+            out.append(((bx1, by1, bx2, by2), float(confidences[i])))
+
+        return out
+
+    # ------------------------------------------------------------------ #
+    #  Inference
+    # ------------------------------------------------------------------ #
+
+    def _preprocess_and_infer(self, frame: np.ndarray):
+        """Run preprocessing + ONNX inference, return raw outputs + geometry."""
+        blob, ratio, pad_x, pad_y = self._preprocess(frame)
+        input_name = self._session.get_inputs()[0].name
+        outputs = self._session.run(None, {input_name: blob})
+        return outputs[0], ratio, pad_x, pad_y
 
     def detect(self, frame: np.ndarray) -> List[Tuple[BBox, float]]:
         """Run vehicle detection on *frame*.
@@ -78,35 +208,12 @@ class VehicleDetector:
             List of ((x1, y1, x2, y2), confidence) tuples in pixel coords
             of the original frame.
         """
-        if self._model is None:
+        if self._session is None:
             self.load()
 
         h, w = frame.shape[:2]
-
-        # Run YOLO — ultralytics handles resizing, NMS, etc. internally
-        results = self._model(
-            frame,
-            imgsz=self.imgsz,      # inference resolution
-            conf=self.conf,        # confidence threshold
-            classes=self.classes,  # only keep vehicle classes
-            verbose=False,         # suppress per-frame logging
-        )
-
-        out: List[Tuple[BBox, float]] = []
-        for r in results:
-            if r.boxes is None:
-                continue
-            for box in r.boxes:
-                # box.xyxy is a tensor of shape (1, 4) — top-left & bottom-right
-                coords = box.xyxy[0].cpu().numpy().astype(int)
-                # Clamp coordinates to frame boundaries
-                x1 = max(0, int(coords[0]))
-                y1 = max(0, int(coords[1]))
-                x2 = min(w, int(coords[2]))
-                y2 = min(h, int(coords[3]))
-                out.append(((x1, y1, x2, y2), float(box.conf[0])))
-
-        return out
+        output, ratio, pad_x, pad_y = self._preprocess_and_infer(frame)
+        return self._postprocess(output, ratio, pad_x, pad_y, h, w)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

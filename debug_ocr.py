@@ -12,7 +12,7 @@ import pytesseract
 
 cfg = {
     "detection": {
-        "model_path": "yolov8n.pt",
+        "model_path": "yolov8n.onnx",
         "confidence": 0.2,
         "vehicle_classes": [2, 3, 5, 7],
         "input_size": 640,

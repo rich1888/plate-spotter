@@ -30,7 +30,7 @@ What it does:
     6. Prints results to the terminal.
 
 Requirements:
-    pip3 install opencv-python-headless numpy PyYAML ultralytics pytesseract
+    pip3 install opencv-python-headless numpy PyYAML onnxruntime pytesseract
     # Plus Tesseract must be installed:
     #   macOS:   brew install tesseract
     #   Ubuntu:  sudo apt install tesseract-ocr
@@ -216,7 +216,7 @@ Examples:
     config = load_config(args.config)
 
     # Initialise pipeline components
-    print("Loading YOLO model (first run downloads ~6 MB)…")
+    print("Loading YOLO model…")
     detector = VehicleDetector(config)
     detector.load()
 

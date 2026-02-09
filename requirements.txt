@@ -11,8 +11,8 @@ opencv-python-headless>=4.8,<5.0
 PyYAML>=6.0,<7.0
 requests>=2.31,<3.0
 
-# Detection — pulls PyTorch; on Pi use pip install from piwheels
-ultralytics>=8.1,<9.0
+# Detection — ONNX Runtime (lightweight, no PyTorch dependency)
+onnxruntime>=1.16,<2.0
 
 # OCR
 pytesseract>=0.3.10,<1.0

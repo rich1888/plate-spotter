@@ -40,7 +40,7 @@ DEFAULT_CONFIG = {
 
     # ── Vehicle detection (YOLOv8-nano) ───────────────────────────────
     "detection": {
-        "model_path": "yolov8n.pt",  # Ultralytics auto-downloads this (~6 MB)
+        "model_path": "yolov8n.onnx",  # Pre-exported ONNX model (see README)
         "confidence": 0.4,           # Only keep detections above this score (0-1)
         "vehicle_classes": [2, 3, 5, 7],  # COCO class IDs:
                                           #   2 = car, 3 = motorcycle,

@@ -218,7 +218,7 @@ python3 -m src.main -c config.yaml
 
 # You should see:
 #   plate-spotter starting
-#   YOLO model loaded and warmed up
+#   ONNX model loaded and warmed up
 #   Camera started
 #   Uploader thread started
 #
@@ -288,7 +288,7 @@ chmod +x install.sh
 
 | Decision | Choice | Why |
 |---|---|---|
-| Vehicle detection | YOLOv8n (COCO pre-trained) | 6 MB model, ~5 FPS on Pi 4 at 640 px |
+| Vehicle detection | YOLOv8n via ONNX Runtime | ~100 MB RAM vs ~800 MB with PyTorch |
 | Plate localisation | OpenCV morphological (blackhat + edge) | No second model needed, < 1 ms per ROI |
 | OCR | Tesseract via pytesseract | ~50 MB RAM vs 500 MB+ for EasyOCR/PaddleOCR |
 | Tracking | Greedy IoU tracker | No external deps, handles dashcam motion well |
@@ -342,7 +342,7 @@ plate-spotter/
 │   ├── __init__.py         ← makes src/ a Python package
 │   ├── camera.py           ← picamera2 capture thread (OpenCV fallback)
 │   ├── config.py           ← YAML config with defaults + env overrides
-│   ├── detect.py           ← YOLOv8n vehicles + morphological plate finder
+│   ├── detect.py           ← YOLOv8n (ONNX) vehicles + morphological plate finder
 │   ├── main.py             ← pipeline orchestrator + CLI entry point
 │   ├── ocr.py              ← Tesseract OCR with preprocessing
 │   ├── queue_manager.py    ← SQLite-backed persistent upload queue
@@ -378,7 +378,10 @@ Or check that the image actually contains a car.
 **Camera permission error on Pi** — Add your user to the video group:
 `sudo usermod -aG video $USER` then log out and back in.
 
-**YOLO model download fails** — The model auto-downloads on first run.
-Make sure you have internet. Or manually download `yolov8n.pt` from
-https://github.com/ultralytics/assets/releases and place it in the
-project directory.
+**ONNX model not found** — You need to export it once (requires ultralytics):
+```bash
+pip install ultralytics
+python3 -c "from ultralytics import YOLO; YOLO('yolov8n.pt').export(format='onnx')"
+pip uninstall ultralytics torch -y  # optional: reclaim disk/RAM
+```
+This creates `yolov8n.onnx` in the project directory.

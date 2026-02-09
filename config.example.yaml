@@ -10,7 +10,7 @@ camera:
   opencv_device: 0
 
 detection:
-  model_path: yolov8n.pt     # auto-downloaded on first run by ultralytics
+  model_path: yolov8n.onnx   # exported once from yolov8n.pt (see README)
   confidence: 0.4
   vehicle_classes: [2, 3, 5, 7]   # COCO IDs: car, motorcycle, bus, truck
   input_size: 640                  # downscale for inference (320 = faster, 640 = better)
