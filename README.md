@@ -120,7 +120,7 @@ deactivate   # exits the virtual environment
 ## Installing on a Raspberry Pi (fresh OS)
 
 These instructions assume you're starting from a **fresh Raspberry Pi OS
-(Bookworm or Bullseye)** install with the Pi Camera Module connected.
+(Trixie, Bookworm, or Bullseye)** install with the Pi Camera Module connected.
 
 ### Prerequisites
 
@@ -135,10 +135,10 @@ These instructions assume you're starting from a **fresh Raspberry Pi OS
 # Update the system
 sudo apt update && sudo apt upgrade -y
 
-# Enable the camera (Bookworm uses libcamera by default)
+# Enable the camera
 # On Bullseye you may need: sudo raspi-config → Interface Options → Camera
 # Test the camera works:
-libcamera-hello --timeout 3000
+rpicam-hello --timeout 3000
 ```
 
 If you see a 3-second camera preview, you're good.
@@ -152,7 +152,7 @@ sudo apt install -y \
     tesseract-ocr libtesseract-dev libleptonica-dev \
     libcamera-dev libcap-dev python3-libcamera python3-picamera2 \
     libopencv-dev python3-opencv \
-    libatlas-base-dev
+    libopenblas-dev
 ```
 
 What these are:
@@ -161,7 +161,7 @@ What these are:
 - `tesseract-ocr` — the OCR engine that reads text from images
 - `python3-picamera2` — Python library to control the Pi camera
 - `python3-opencv` — computer vision library (image processing)
-- `libatlas-base-dev` — fast maths library that numpy needs
+- `libopenblas-dev` — fast maths library that numpy needs
 
 ### Step 3: Clone and install
 

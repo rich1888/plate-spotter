@@ -16,7 +16,7 @@ sudo apt-get install -y -qq \
     tesseract-ocr libtesseract-dev libleptonica-dev \
     libcamera-dev libcap-dev python3-libcamera python3-picamera2 \
     libopencv-dev python3-opencv \
-    libatlas-base-dev
+    libopenblas-dev
 
 # ── copy project ─────────────────────────────────────────────────────── #
 if [ "$(realpath .)" != "$(realpath "$INSTALL_DIR")" ]; then
