@@ -1,0 +1,30 @@
+[Unit]
+Description=Plate Spotter — vehicle plate recognition daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/plate-spotter
+Environment=PLATE_SPOTTER_CONFIG=/home/pi/plate-spotter/config.yaml
+# Put your API token here or in config.yaml
+Environment=PLATE_SPOTTER_API_TOKEN=tokenABCD12345
+ExecStart=/home/pi/plate-spotter/venv/bin/python -m src.main -c /home/pi/plate-spotter/config.yaml
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/pi/plate-spotter
+PrivateTmp=true
+
+# Camera access
+SupplementaryGroups=video
+
+[Install]
+WantedBy=multi-user.target

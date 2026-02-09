@@ -1,0 +1,24 @@
+# plate-spotter dependencies (Raspberry Pi OS Bookworm / Bullseye)
+#
+# System packages (apt) needed BEFORE pip install:
+#   sudo apt install -y tesseract-ocr libtesseract-dev libleptonica-dev
+#   sudo apt install -y libcamera-dev libcap-dev python3-libcamera python3-picamera2
+#   sudo apt install -y libopencv-dev python3-opencv
+
+# Core
+numpy>=1.24,<2.0
+opencv-python-headless>=4.8,<5.0
+PyYAML>=6.0,<7.0
+requests>=2.31,<3.0
+
+# Detection — pulls PyTorch; on Pi use pip install from piwheels
+ultralytics>=8.1,<9.0
+
+# OCR
+pytesseract>=0.3.10,<1.0
+
+# Pi camera (installed via apt on Pi; pip fallback)
+# picamera2>=0.3.17
+
+# Testing
+pytest>=7.0,<9.0

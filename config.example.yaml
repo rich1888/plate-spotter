@@ -1,0 +1,63 @@
+# plate-spotter configuration
+# Copy to config.yaml and edit as needed.
+# Environment overrides: PLATE_SPOTTER_API_TOKEN, PLATE_SPOTTER_DEVICE_ID
+
+camera:
+  resolution: [1280, 720]
+  fps: 15
+  format: RGB888
+  use_picamera2: true        # false → OpenCV fallback (for testing on laptop)
+  opencv_device: 0
+
+detection:
+  model_path: yolov8n.pt     # auto-downloaded on first run by ultralytics
+  confidence: 0.4
+  vehicle_classes: [2, 3, 5, 7]   # COCO IDs: car, motorcycle, bus, truck
+  input_size: 640                  # downscale for inference (320 = faster, 640 = better)
+  detection_interval: 3            # run YOLO every N-th frame
+
+plate_detection:
+  min_aspect_ratio: 2.0
+  max_aspect_ratio: 7.0
+  min_area_ratio: 0.005
+  max_area_ratio: 0.15
+  min_plate_height_px: 20
+
+tracking:
+  max_disappeared: 30     # frames before a lost track is deleted
+  min_stable_frames: 5    # frames before OCR is attempted
+  iou_threshold: 0.3
+  max_tracks: 50
+
+ocr:
+  confidence_threshold: 50       # Tesseract avg confidence 0-100
+  max_blur_variance: 100.0       # Laplacian variance; below = too blurry
+  tesseract_config: "--psm 7 --oem 3"
+  char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+uk_plate:
+  min_length: 2
+  max_length: 8
+  reject_all_same: true
+
+upload:
+  api_url: "https://reghistory.com/api/pi/spotted"
+  api_token: ""           # set via env PLATE_SPOTTER_API_TOKEN recommended
+  device_id: "pi1"
+  timeout: 30
+  max_retries: 5
+  retry_delay_seconds: 60
+
+dedupe:
+  window_minutes: 5       # same plate ignored for this many minutes
+
+storage:
+  evidence_dir: ./evidence
+  max_size_mb: 500
+  max_age_days: 7
+  queue_db: ./upload_queue.db
+  log_file: ./plate-spotter.log
+  log_level: INFO
+
+pipeline:
+  frame_queue_size: 10
